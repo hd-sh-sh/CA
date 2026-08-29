@@ -86,6 +86,32 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:calc(100% - 5
 .btn:disabled{opacity:.45;cursor:default}
 
 /* ── 입력 ── */
+/* ── 사전 계획 카드 ── */
+.plancard{margin:14px 24px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  border-left:3px solid var(--free);overflow:hidden}
+.plancard .head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.plancard .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--free)}
+.plancard .goal{font-size:13px;color:var(--ink);flex:1;min-width:0}
+.plancard .ver{font-family:var(--mono);font-size:10px;color:var(--muted);
+  border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.plancard .why{font-size:12px;color:var(--approve);padding:8px 14px;border-bottom:1px solid var(--line);
+  background:rgba(224,165,76,.07)}
+.plancard ol{list-style:none;margin:0;padding:8px 14px 12px;counter-reset:s}
+.plancard li{display:flex;gap:10px;padding:4px 0;font-size:13px;color:var(--muted);align-items:baseline}
+.plancard li .mark{font-family:var(--mono);font-size:11px;width:16px;flex:none;text-align:center;opacity:.6}
+.plancard li.doing{color:var(--ink)}
+.plancard li.doing .mark{color:var(--free);opacity:1}
+.plancard li.done .mark{color:var(--free);opacity:1}
+.plancard li.done .txt{text-decoration:line-through;opacity:.55}
+.plancard li.skip .mark{color:var(--approve);opacity:1}
+.plancard li.skip .txt{opacity:.55}
+.plancard.old{opacity:.5;border-left-color:var(--muted)}
+
+.cycle.replan .num{border-color:#b07fd6;color:#b07fd6}
+.cycle.replan .tline.a .txt{color:#b07fd6}
+.stepbadge{font-family:var(--mono);font-size:9px;color:var(--muted);border:1px solid var(--line);
+  border-radius:4px;padding:0 4px;margin-left:6px}
+
 .composer{border-top:1px solid var(--line);padding:14px 24px 18px;background:var(--panel)}
 .composer .row{display:flex;gap:10px;align-items:flex-end}
 textarea{
@@ -163,13 +189,15 @@ textarea{
 
 <main>
   <div class="chat">
+    <div id="planMount"></div>
     <div class="stream" id="stream"></div>
     <div class="composer">
       <div class="row">
         <textarea id="input" placeholder="관심 있는 학과나 직업을 말해 주세요. 예) 미디어커뮤니케이션 쪽이 궁금해요"></textarea>
+        <button class="btn" id="stop" disabled>멈춤</button>
         <button class="send" id="send">보내기</button>
       </div>
-      <div class="hint">Enter 전송 · Shift+Enter 줄바꿈 · '그만'이라고 쓰면 종료합니다. 키는 저장되지 않습니다.</div>
+      <div class="hint">Enter 전송 · Shift+Enter 줄바꿈 · 진행 중에 <b>멈춤</b>을 누르면 계획을 다시 세울 수 있습니다 · '그만'은 종료</div>
     </div>
   </div>
 
@@ -259,12 +287,24 @@ const GUARDRAILS = ``;
 const SYSTEM_PROMPT = `너는 아래 명세서대로 동작하는 진로 상담 에이전트다.
 ${SPEC}
 
+## 진행 정책 — 사전 계획 후 실행 (Plan & Execute)
+1. 사용자 질문을 받으면 다른 도구를 쓰기 전에 makePlan으로 사전 계획을 먼저 세운다. 3~6단계, 각 단계는 한 문장.
+2. 계획을 세운 뒤에는 1단계부터 하나씩 실행한다. 한 번에 한 단계만.
+3. 각 단계는 TAO로 진행한다. 도구를 부르기 전에 왜 부르는지 한 문장으로 말하고(생각), 도구를 부르고(행동), 결과를 확인한다(관찰).
+4. 한 단계를 마치면 completeStep으로 체크한다. 건너뛴 단계는 skipped를 true로 준다.
+
+## 재계획 규칙
+5. 도구 결과가 비었거나(empty) 예상과 다르면 원래 계획을 고집하지 않는다. 거기서 멈춘다.
+6. 같은 도구를 같은 인자로 다시 부르지 않는다. replan을 불러 계획을 새로 세우고, reason에 무엇이 어긋났는지 적는다.
+7. 방법을 바꿔 두 번 시도해도 못 찾으면 지어내지 않는다. "찾지 못했다"고 그대로 말하고, 대신 할 수 있는 것을 제안한다. 추측을 사실처럼 쓰지 않는다.
+8. 사용자가 중간에 멈추고 계획을 바꿔 달라고 하면, 하던 단계를 이어가지 말고 replan으로 계획을 새로 세운다.
+9. 확실하지 않은 정보에는 '확인 필요'를 붙인다. 커리어넷이 아니라 모델 지식으로 답한 것은 그렇게 밝힌다.
+
 진행 방식:
-- 한 번에 하나씩, 계획 ①~⑥ 순서로 진행한다. 현재 단계를 바꿀 때마다 setPlanStep 도구를 부른다.
 - 모르는 건 추측하지 말고 askUser로 되묻는다. 질문은 한 번에 하나만.
 - 학과·직업 정보는 searchCareerNet을 먼저 쓴다.
 - 새로 알게 된 학생 정보는 rememberFact로 상태에 기록한다.
-- 도구를 부르기 전에 왜 부르는지 한 문장으로 먼저 말한다(생각).
+- 명세서의 표준 절차(①~⑥) 단계가 바뀌면 setPlanStep을 부른다.
 - 답변은 한국어, 고등학생이 읽을 수 있는 말로 쓴다.
 ${GUARDRAILS}`;
 
@@ -280,8 +320,11 @@ const state = {
   파악한정보: {},      // { 관심학과: "...", 학년: "..." }
   검색결과: [],        // [{ 도구, 질의, 요약 }]
   만든문서: [],        // [{ 제목, 내용 }]
-  TAO: [],             // [{ t, a, args, o, kind }]
-  단계: 0,
+  TAO: [],             // [{ t, a, args, o, kind, step }]
+  단계: 0,             // 명세서 표준 절차 ①~⑥
+  사전계획: null,      // { 목표, 판, 단계:[{글, 상태}], 사유 }
+  재계획횟수: 0,
+  중단요청: false,
   종료됨: false
 };
 
@@ -344,7 +387,11 @@ function renderPlan(){
 
 function renderState(){
   const facts = Object.entries(state.파악한정보);
+  const p = state.사전계획;
+  const 진행 = p ? `${p.단계.filter(s=>s.상태!=="대기"&&s.상태!=="진행").length}/${p.단계.length}` : "—";
   const rows = [
+    ["사전 계획", p ? `v${p.판} · ${진행}` : "—", !!p],
+    ["재계획", state.재계획횟수 ? state.재계획횟수 + "회" : "—", state.재계획횟수],
     ["파악한 정보", facts.length ? facts.length + "건" : "—", facts.length],
     ["검색 결과", state.검색결과.length ? state.검색결과.length + "건" : "—", state.검색결과.length],
     ["만든 문서", state.만든문서.length ? state.만든문서.length + "장" : "—", state.만든문서.length],
@@ -357,14 +404,43 @@ function renderState(){
   $("state").innerHTML = html;
 }
 
+/* ── 사전 계획 카드 ── */
+const MARK = { 대기:"○", 진행:"▸", 완료:"✓", 건너뜀:"–" };
+const CLS  = { 대기:"", 진행:"doing", 완료:"done", 건너뜀:"skip" };
+
+function renderPlanCard(){
+  const mount = $("planMount"), p = state.사전계획;
+  if (!p){ mount.innerHTML = ""; return; }
+  mount.innerHTML =
+    `<div class="plancard">
+       <div class="head">
+         <span class="lbl">사전 계획</span>
+         <span class="goal">${esc(p.목표)}</span>
+         <span class="ver">v${p.판}${p.판 > 1 ? " · 재계획" : ""}</span>
+       </div>
+       ${p.사유 ? `<div class="why">계획을 고친 이유 · ${esc(p.사유)}</div>` : ""}
+       <ol>${p.단계.map((s,i)=>
+         `<li class="${CLS[s.상태]}"><span class="mark">${MARK[s.상태]}</span>
+            <span class="txt">${i+1}. ${esc(s.글)}</span></li>`).join("")}</ol>
+     </div>`;
+}
+
+function currentStepNo(){
+  const p = state.사전계획; if (!p) return null;
+  const i = p.단계.findIndex(s => s.상태 === "진행");
+  return i >= 0 ? i + 1 : null;
+}
+
 function logTAO(t, a, args, o, kind){
-  state.TAO.push({t,a,args,o,kind});
+  const step = currentStepNo();
+  state.TAO.push({t,a,args,o,kind,step});
   if (state.TAO.length === 1) tape.innerHTML = "";
   const el = document.createElement("div");
   el.className = "cycle" + (kind ? " " + kind : "");
   el.innerHTML =
     `<div class="num">${state.TAO.length}</div>
-     <div class="tline t"><span class="tag">T</span><span class="txt">${esc(t || "—")}</span></div>
+     <div class="tline t"><span class="tag">T</span><span class="txt">${esc(t || "—")}${
+        step ? `<span class="stepbadge">${step}단계</span>` : ""}</span></div>
      <div class="tline a"><span class="tag">A</span><span class="txt">${esc(a)}(${esc(args)})</span></div>
      <div class="tline o"><span class="tag">O</span><span class="txt">${esc(o)}</span></div>`;
   tape.appendChild(el);
@@ -421,6 +497,19 @@ function confirmSheetCard(){
    [6] 도구 — 명세서 [도구]
    ============================================================ */
 const TOOLS = [
+  { type:"function", function:{ name:"makePlan", description:"사용자 질문을 받은 뒤 가장 먼저 부른다. 해결 순서를 사전 계획으로 세운다.",
+    parameters:{type:"object",properties:{
+      goal:{type:"string",description:"이번에 해결할 목표 한 문장"},
+      steps:{type:"array",items:{type:"string"},description:"3~6단계, 각 단계 한 문장"}},required:["goal","steps"]}}},
+  { type:"function", function:{ name:"completeStep", description:"현재 단계를 마쳤을 때 체크한다.",
+    parameters:{type:"object",properties:{
+      result:{type:"string",description:"이 단계에서 알아낸 것 한 줄"},
+      skipped:{type:"boolean",description:"실행하지 않고 건너뛰었으면 true"}}}}},
+  { type:"function", function:{ name:"replan", description:"도구 결과가 비었거나 예상과 다를 때, 또는 사용자가 계획 수정을 요청했을 때 계획을 새로 세운다.",
+    parameters:{type:"object",properties:{
+      reason:{type:"string",description:"무엇이 어긋나서 고치는지"},
+      steps:{type:"array",items:{type:"string"},description:"새 단계 목록"},
+      goal:{type:"string",description:"목표가 바뀌었으면 새 목표"}},required:["reason","steps"]}}},
   { type:"function", function:{ name:"askUser", description:"학생에게 부족한 정보를 되묻는 명확화 질문. 한 번에 하나만.",
     parameters:{type:"object",properties:{question:{type:"string"}},required:["question"]}}},
   { type:"function", function:{ name:"searchCareerNet", description:"커리어넷에서 학과·직업 정보를 검색한다.",
@@ -491,6 +580,48 @@ async function askModel(instruction){
 /* ── 도구 실행기 ── */
 async function runTool(name, args){
   switch(name){
+    case "makePlan": {
+      const steps = (args.steps || []).slice(0, 8);
+      if (!steps.length) return { error:"steps가 비었다. 최소 3단계를 적을 것." };
+      state.사전계획 = { 목표: args.goal || "", 판: 1, 사유: "", 단계: steps.map(s => ({ 글:s, 상태:"대기" })) };
+      state.사전계획.단계[0].상태 = "진행";
+      renderPlanCard();
+      return { ok:true, 현재단계: 1, 총단계: steps.length,
+               note:"계획을 화면에 띄웠다. 1단계부터 하나씩 실행하고, 끝날 때마다 completeStep을 부를 것." };
+    }
+
+    case "completeStep": {
+      const p = state.사전계획;
+      if (!p) return { error:"아직 계획이 없다. makePlan을 먼저 부를 것." };
+      const i = p.단계.findIndex(s => s.상태 === "진행");
+      if (i < 0) return { ok:true, note:"진행 중인 단계가 없다." };
+      p.단계[i].상태 = args.skipped ? "건너뜀" : "완료";
+      const next = p.단계.findIndex(s => s.상태 === "대기");
+      if (next >= 0) p.단계[next].상태 = "진행";
+      renderPlanCard();
+      return next >= 0
+        ? { ok:true, 다음단계: next + 1, 내용: p.단계[next].글 }
+        : { ok:true, note:"모든 단계를 마쳤다. 결과를 정리해 사용자에게 전달할 것." };
+    }
+
+    case "replan": {
+      const steps = (args.steps || []).slice(0, 8);
+      if (!steps.length) return { error:"새 steps가 비었다." };
+      const old = $("planMount").querySelector(".plancard");
+      if (old) old.classList.add("old");
+      state.재계획횟수++;
+      const 판 = (state.사전계획?.판 || 0) + 1;
+      state.사전계획 = {
+        목표: args.goal || state.사전계획?.목표 || "",
+        판, 사유: args.reason || "",
+        단계: steps.map(s => ({ 글:s, 상태:"대기" }))
+      };
+      state.사전계획.단계[0].상태 = "진행";
+      renderPlanCard();
+      bubble("계획 수정", `**${esc(args.reason)}**\n계획을 v${판}으로 새로 세웠습니다.`);
+      return { ok:true, 판, 현재단계: 1, note:"새 계획의 1단계부터 다시 실행할 것." };
+    }
+
     case "askUser":
       return { answer: await askCard(args.question) };
 
@@ -500,10 +631,15 @@ async function runTool(name, args){
         state.검색결과.push({ 도구:name, 질의:args.keyword, 요약:`${hits.length}건` });
         return { source:"커리어넷", results: hits };
       }catch(e){
-        // 브라우저에서 직접 호출하면 CORS로 막힐 수 있다. 그때는 모델 지식으로 대체.
+        if (/결과 없음/.test(e.message)){
+          state.검색결과.push({ 도구:name, 질의:args.keyword, 요약:"0건" });
+          return { empty:true, 질의:args.keyword,
+            note:"커리어넷에서 결과가 0건이다. 같은 검색어로 다시 부르지 말 것. 검색어를 바꾸거나 replan하거나, 못 찾았다고 사용자에게 알릴 것." };
+        }
+        // 네트워크·CORS로 못 부른 경우에만 모델 지식으로 대체한다.
         const alt = await askModel(`커리어넷 ${args.kind} 정보 수준으로 "${args.keyword}"를 정리해줘. 하는 일, 필요한 적성, 관련 학과, 진출 분야.`);
         state.검색결과.push({ 도구:name, 질의:args.keyword, 요약:"대체 조사" });
-        return { source:"모델 지식(커리어넷 호출 실패: " + e.message + ")", results: alt };
+        return { source:"모델 지식(커리어넷 호출 실패: " + e.message + ")", 확인필요:true, results: alt };
       }
     }
 
@@ -634,58 +770,82 @@ $("ping").onclick = async () => {
    [8] 에이전트 루프
    ============================================================ */
 async function agentTurn(){
-  for (let i = 0; i < 12; i++){
-    if (state.종료됨) return;
-
-    let reply;
-    try { reply = await llm(messages, TOOLS); }
-    catch(e){ bubble("오류", e.message); return; }
-
-    messages.push(reply);
-    const thought = (reply.content || "").trim();
-    if (thought) bubble("도우미", thought);
-
-    const calls = reply.tool_calls;
-    if (!calls || !calls.length) return;      // 도구 없이 답만 하면 턴 종료
-
-    for (const c of calls){
-      const name = c.function.name;
-      let args = {};
-      try { args = JSON.parse(c.function.arguments || "{}"); } catch(e){}
-
-      // 승인 도구는 실행 전에 멈춘다
-      if (APPROVAL_TOOLS.includes(name)){
-        const ok = await approvalCard(name, args, thought);
-        if (!ok){
-          logTAO(thought, name, Object.values(args).join(", ").slice(0,40), "사용자가 취소함", "approve");
-          messages.push({ role:"tool", tool_call_id:c.id, content:JSON.stringify({ cancelled:true }) });
-          continue;
-        }
-      }
-
-      let result, kind = APPROVAL_TOOLS.includes(name) ? "approve" : "";
-      try {
-        result = await runTool(name, args);
-        if (result && result.error) { failStreak++; kind = "err"; } else failStreak = 0;
-      } catch(e){
-        result = { error: e.message }; failStreak++; kind = "err";
-      }
-
-      const argStr = Object.values(args).join(", ").slice(0, 44);
-      const obs = result.error ? "실패 · " + result.error
-                : JSON.stringify(result).replace(/\s+/g," ").slice(0, 110) + "…";
-      logTAO(thought, name, argStr, obs, kind);
-
-      messages.push({ role:"tool", tool_call_id:c.id, content: JSON.stringify(result).slice(0, 6000) });
-
-      if (failStreak >= 3){
-        finish("도구가 세 번 연속 실패해서 멈췄습니다. 키와 네트워크를 확인한 뒤 새로고침해 주세요.");
-        return;
-      }
+  $("stop").disabled = false;
+  try{
+    for (let i = 0; i < 16; i++){
       if (state.종료됨) return;
+      if (state.중단요청){ pauseForReplan(); return; }
+
+      let reply;
+      try { reply = await llm(messages, TOOLS); }
+      catch(e){ bubble("오류", e.message); return; }
+
+      messages.push(reply);
+      const thought = (reply.content || "").trim();
+      if (thought) bubble("도우미", thought);
+
+      const calls = reply.tool_calls;
+      if (!calls || !calls.length) return;      // 도구 없이 답만 하면 턴 종료
+
+      for (const c of calls){
+        const name = c.function.name;
+        let args = {};
+        try { args = JSON.parse(c.function.arguments || "{}"); } catch(e){}
+
+        if (APPROVAL_TOOLS.includes(name)){
+          const ok = await approvalCard(name, args, thought);
+          if (!ok){
+            logTAO(thought, name, Object.values(args).join(", ").slice(0,40), "사용자가 취소함", "approve");
+            messages.push({ role:"tool", tool_call_id:c.id, content:JSON.stringify({ cancelled:true }) });
+            continue;
+          }
+        }
+
+        let result, kind = "";
+        if (APPROVAL_TOOLS.includes(name)) kind = "approve";
+        if (name === "replan") kind = "replan";
+
+        try {
+          result = await runTool(name, args);
+          if (result && result.error) { failStreak++; kind = "err"; }
+          else if (result && result.empty) { kind = "err"; }   // 실패는 아니지만 눈에 띄게
+          else failStreak = 0;
+        } catch(e){
+          result = { error: e.message }; failStreak++; kind = "err";
+        }
+
+        const argStr = Object.values(args).flat().join(", ").slice(0, 44);
+        const obs = result.error ? "실패 · " + result.error
+                  : result.empty ? "결과 없음 → 재계획 필요"
+                  : JSON.stringify(result).replace(/\s+/g," ").slice(0, 110) + "…";
+        logTAO(thought, name, argStr, obs, kind);
+
+        messages.push({ role:"tool", tool_call_id:c.id, content: JSON.stringify(result).slice(0, 6000) });
+
+        if (failStreak >= 3){
+          finish("도구가 세 번 연속 실패해서 멈췄습니다. 키와 네트워크를 확인한 뒤 새로고침해 주세요.");
+          return;
+        }
+        if (state.종료됨) return;
+        if (state.중단요청){ pauseForReplan(); return; }
+      }
     }
+    bubble("도우미", "생각이 길어져서 한 번 멈췄어요. 이어서 진행할까요?");
+  } finally {
+    $("stop").disabled = true;
   }
-  bubble("도우미", "생각이 길어져서 한 번 멈췄어요. 이어서 진행할까요?");
+}
+
+/* 사용자가 멈춤을 눌렀을 때 — 이어가지 않고 계획 수정을 받는다 */
+function pauseForReplan(){
+  state.중단요청 = false;
+  const p = state.사전계획;
+  if (p) p.단계.forEach(s => { if (s.상태 === "진행") s.상태 = "대기"; });
+  renderPlanCard();
+  logTAO("사용자가 진행을 멈춤", "pause", "", "계획 수정 대기", "replan");
+  bubble("멈춤", "진행을 멈췄습니다. 계획을 어떻게 바꿀까요? 바꿀 점을 적어 주시면 계획을 새로 세웁니다.");
+  messages.push({ role:"user", content:
+    "[시스템] 사용자가 진행을 멈췄다. 하던 단계를 이어가지 말고, 사용자의 다음 요청을 받아 replan으로 계획을 새로 세울 것." });
 }
 
 function finish(msg){
@@ -714,6 +874,12 @@ async function submit(){
   await agentTurn();
   $("send").disabled = false;
 }
+
+$("stop").onclick = () => {
+  state.중단요청 = true;
+  $("stop").disabled = true;
+  bubble("나", "잠깐 멈춰 줘", true);
+};
 
 $("send").onclick = submit;
 $("input").addEventListener("keydown", e => {
