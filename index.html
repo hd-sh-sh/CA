@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미디어 진로 도우미</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+:root{
+  --bg:#14161d;        /* 잉크 네이비 */
+  --panel:#1b1e27;
+  --panel-2:#20242f;
+  --line:#2b303d;
+  --ink:#e8e6df;       /* 따뜻한 오프화이트 */
+  --muted:#8b93a7;
+  --free:#5ec8c0;      /* 자유 도구 */
+  --approve:#e0a54c;   /* 승인 도구 = 멈춰서 확인 */
+  --user:#9aa7ff;
+  --danger:#e06c6c;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--free);outline-offset:2px}
+
+/* ── 헤더 ── */
+header{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);
+}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto}
+.brand h1{margin:0;font-size:16px;font-weight:600;letter-spacing:-.02em}
+.brand .role{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+.keybox{display:flex;align-items:center;gap:8px}
+.keybox label{font-size:12px;color:var(--muted)}
+.keybox input{
+  width:220px;padding:6px 10px;border-radius:6px;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:12px;
+}
+.model{font-family:var(--mono);font-size:11px;color:var(--muted);
+  border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.model b{color:var(--free);font-weight:500}
+
+/* ── 레이아웃 ── */
+main{display:grid;grid-template-columns:minmax(0,1fr) 400px;height:calc(100% - 57px)}
+.chat{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
+.rail{background:var(--panel);overflow-y:auto;padding:16px}
+
+/* ── 대화 ── */
+.stream{flex:1;overflow-y:auto;padding:22px 24px;display:flex;flex-direction:column;gap:16px}
+.msg{max-width:660px;display:flex;flex-direction:column;gap:4px}
+.msg .who{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--muted)}
+.msg .body{padding:12px 15px;border-radius:12px;background:var(--panel);border:1px solid var(--line);white-space:pre-wrap}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.user .body{background:#242a3d;border-color:#333c57;white-space:pre-wrap}
+.msg.user .who{color:var(--user)}
+.msg .body :is(h1,h2,h3){margin:.6em 0 .3em;font-size:1em;letter-spacing:-.01em}
+.msg .body ul{margin:.4em 0;padding-left:1.2em}
+.msg .body table{border-collapse:collapse;margin:.6em 0;font-size:13px;width:100%}
+.msg .body :is(td,th){border:1px solid var(--line);padding:6px 9px;text-align:left}
+.msg .body th{background:var(--panel-2);color:var(--muted);font-weight:500}
+.msg .body code{font-family:var(--mono);font-size:12px}
+
+/* 도구가 되묻는 질문 / 승인 카드 */
+.card{max-width:660px;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.card.ask{border-left:3px solid var(--free)}
+.card.approve{border-left:3px solid var(--approve)}
+.card .cap{font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:8px 14px;
+  border-bottom:1px solid var(--line);color:var(--muted)}
+.card.approve .cap{color:var(--approve)}
+.card .cbody{padding:12px 14px;white-space:pre-wrap}
+.card .args{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px;
+  background:var(--bg);border-radius:6px;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
+.card .acts{display:flex;gap:8px;padding:0 14px 12px}
+.btn{border:1px solid var(--line);background:var(--panel-2);color:var(--ink);
+  padding:7px 14px;border-radius:7px;font-size:13px;cursor:pointer}
+.btn:hover{background:#2a303f}
+.btn.go{background:var(--approve);border-color:var(--approve);color:#20242f;font-weight:600}
+.btn.no{color:var(--muted)}
+.btn:disabled{opacity:.45;cursor:default}
+
+/* ── 입력 ── */
+.composer{border-top:1px solid var(--line);padding:14px 24px 18px;background:var(--panel)}
+.composer .row{display:flex;gap:10px;align-items:flex-end}
+textarea{
+  flex:1;resize:none;min-height:46px;max-height:160px;padding:12px 14px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;
+}
+.send{padding:12px 20px;border-radius:10px;border:1px solid var(--free);
+  background:var(--free);color:#14161d;font-weight:600;cursor:pointer}
+.send:disabled{opacity:.4;cursor:default}
+.hint{font-size:11px;color:var(--muted);margin-top:8px}
+
+/* ── 오른쪽: 계획 레일 ── */
+.rail h2{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--muted);
+  margin:0 0 10px;font-weight:500}
+.rail section{margin-bottom:24px}
+.plan{list-style:none;margin:0;padding:0;font-size:13px}
+.plan li{display:flex;gap:9px;padding:5px 0;color:var(--muted);align-items:baseline}
+.plan .n{font-family:var(--mono);font-size:11px;opacity:.6}
+.plan li.on{color:var(--ink)}
+.plan li.on .n{color:var(--free);opacity:1}
+.plan li.done{color:#6d7488}
+.plan li.done .n{color:var(--free);opacity:1}
+.plan li.done .t{text-decoration:line-through;opacity:.6}
+
+/* 상태 */
+.state{font-size:13px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.state div{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.state div:last-child{border-bottom:0}
+.state .k{color:var(--muted)}
+.state .v{font-family:var(--mono);font-size:12px}
+.state .v.has{color:var(--free)}
+
+/* TAO 테이프 */
+.tape{display:flex;flex-direction:column;gap:0}
+.cycle{position:relative;padding-left:26px;padding-bottom:16px}
+.cycle:before{content:"";position:absolute;left:8px;top:20px;bottom:0;width:1px;background:var(--line)}
+.cycle:last-child:before{display:none}
+.cycle .num{position:absolute;left:0;top:2px;width:17px;height:17px;border-radius:50%;
+  border:1px solid var(--line);background:var(--panel-2);color:var(--muted);
+  font-family:var(--mono);font-size:9px;display:grid;place-items:center}
+.cycle.approve .num{border-color:var(--approve);color:var(--approve)}
+.cycle.err .num{border-color:var(--danger);color:var(--danger)}
+.tline{display:flex;gap:8px;font-size:12px;padding:2px 0;align-items:baseline}
+.tline .tag{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:var(--muted);width:14px;flex:none;padding-top:2px}
+.tline .txt{min-width:0;word-break:break-word;color:var(--ink);opacity:.9}
+.tline.a .txt{font-family:var(--mono);font-size:11px;color:var(--free)}
+.cycle.approve .tline.a .txt{color:var(--approve)}
+.tline.o .txt{color:var(--muted)}
+.cycle.err .tline.o .txt{color:var(--danger)}
+.empty{font-size:12px;color:var(--muted);border:1px dashed var(--line);border-radius:10px;padding:14px;text-align:center}
+
+@media (max-width:900px){
+  main{grid-template-columns:1fr;grid-template-rows:1fr auto;height:auto}
+  .rail{border-top:1px solid var(--line)}
+  .chat{border-right:0}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>미디어 진로 도우미</h1>
+    <span class="role">진로·학과 정보 큐레이터</span>
+  </div>
+  <span class="model">모델 <b id="modelName">gpt-5.1</b></span>
+  <span class="model" id="mode">확인 중…</span>
+  <button class="btn" id="ping">연결 테스트</button>
+  <div class="keybox" id="keybox" style="display:none">
+    <label for="apikey">OpenAI 키</label>
+    <input id="apikey" type="password" placeholder="sk-..." autocomplete="off">
+  </div>
+</header>
+
+<main>
+  <div class="chat">
+    <div class="stream" id="stream"></div>
+    <div class="composer">
+      <div class="row">
+        <textarea id="input" placeholder="관심 있는 학과나 직업을 말해 주세요. 예) 미디어커뮤니케이션 쪽이 궁금해요"></textarea>
+        <button class="send" id="send">보내기</button>
+      </div>
+      <div class="hint">Enter 전송 · Shift+Enter 줄바꿈 · '그만'이라고 쓰면 종료합니다. 키는 저장되지 않습니다.</div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <section>
+      <h2>계획</h2>
+      <ul class="plan" id="plan"></ul>
+    </section>
+    <section>
+      <h2>상태</h2>
+      <div class="state" id="state"></div>
+    </section>
+    <section>
+      <h2>실행 기록 · TAO</h2>
+      <div class="tape" id="tape"><div class="empty">아직 실행한 도구가 없습니다.</div></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+/* ============================================================
+   [1] 설정 — .env에서 가져온 값
+   ============================================================ */
+const CONFIG = {
+  OPENAI_API_KEY: "",                 // 직접 모드일 때만 화면 상단에서 입력
+  OPENAI_MODEL:   "gpt-5.1",
+  OPENAI_URL:     "https://api.openai.com/v1/chat/completions",
+  CAREERNET_API_KEY: ""               // 비워 둠. 키는 서버(.env / Vercel 환경 변수)에만 둔다.
+};
+
+// 서버 모드: server.py 가 켜져 있으면 키는 .env 에서 읽고, 호출도 서버가 대신 한다.
+// 직접 모드: 파일만 열었을 때. 브라우저가 직접 호출하므로 CORS에 막힐 수 있다.
+let SERVER_MODE = false;
+
+async function detectMode(){
+  try{
+    const r = await fetch("/api/health", { cache:"no-store" });
+    const h = await r.json();
+    SERVER_MODE = !!h.ok;
+    if (h.model) { CONFIG.OPENAI_MODEL = h.model; $("modelName").textContent = h.model; }
+    setModeBadge(h);
+  }catch(e){
+    SERVER_MODE = false;
+    setModeBadge(null);
+  }
+}
+
+function setModeBadge(h){
+  const badge = $("mode"), keybox = $("keybox");
+  if (SERVER_MODE){
+    badge.textContent = h.hasOpenAIKey ? "서버 모드 · .env 키 사용" : "서버 모드 · .env에 키 없음";
+    badge.style.color = h.hasOpenAIKey ? "var(--free)" : "var(--approve)";
+    keybox.style.display = "none";
+  } else {
+    badge.textContent = "직접 모드 · CORS에 막힐 수 있음";
+    badge.style.color = "var(--approve)";
+    keybox.style.display = "flex";
+  }
+}
+
+/* ============================================================
+   [2] 명세서 (my-agent.md 5요소) — 시스템 프롬프트의 원본
+   ============================================================ */
+const SPEC = `
+## 목표
+관심 학과, 직업을 커리어넷 정보로 비교·정리해 정보지를 만든다. 단, 'OO 가라'고 단정 추천하지 않는다.
+
+## 종료
+정보지를 만들어 사용자가 확인하면 마무리. (사용자가 '그만' 하거나, 도구가 여러 번 실패해도 멈춤)
+
+## 역할
+나는 진로·학과 정보를 정리·비교해 주는 큐레이터다.
+
+## 계획
+① 역할 확인 ② 관심사 파악 ③ 기초 정보 조사 ④ 대학 학과 매핑 조사 ⑤ 직업 적합도 탐색 ⑥ (요청 시) PDF 미리보기→저장
+
+## 상태
+파악한 정보 · 검색 결과 목록 · 만든 문서 · TAO 기록
+`;
+
+/* ── [다음 차시] 안전 규칙 · 가드레일 ───────────────────────
+   여기에 규칙을 추가하면 시스템 프롬프트 끝에 붙습니다.
+   예) 개인정보 수집 금지, 성적/합격 가능성 단정 금지, 출처 없는 정보 금지 …
+   ------------------------------------------------------- */
+const GUARDRAILS = ``;
+
+const SYSTEM_PROMPT = `너는 아래 명세서대로 동작하는 진로 상담 에이전트다.
+${SPEC}
+
+진행 방식:
+- 한 번에 하나씩, 계획 ①~⑥ 순서로 진행한다. 현재 단계를 바꿀 때마다 setPlanStep 도구를 부른다.
+- 모르는 건 추측하지 말고 askUser로 되묻는다. 질문은 한 번에 하나만.
+- 학과·직업 정보는 searchCareerNet을 먼저 쓴다.
+- 새로 알게 된 학생 정보는 rememberFact로 상태에 기록한다.
+- 도구를 부르기 전에 왜 부르는지 한 문장으로 먼저 말한다(생각).
+- 답변은 한국어, 고등학생이 읽을 수 있는 말로 쓴다.
+${GUARDRAILS}`;
+
+/* ============================================================
+   [3] 상태 — 명세서 [상태]
+   ============================================================ */
+const PLAN_STEPS = [
+  "역할 확인", "관심사 파악", "기초 정보 조사",
+  "대학 학과 매핑 조사", "직업 적합도 탐색", "PDF 미리보기 → 저장"
+];
+
+const state = {
+  파악한정보: {},      // { 관심학과: "...", 학년: "..." }
+  검색결과: [],        // [{ 도구, 질의, 요약 }]
+  만든문서: [],        // [{ 제목, 내용 }]
+  TAO: [],             // [{ t, a, args, o, kind }]
+  단계: 0,
+  종료됨: false
+};
+
+let messages = [{ role: "system", content: SYSTEM_PROMPT }];
+let failStreak = 0;
+let pending = null;   // 사용자 입력/승인을 기다리는 resolver
+
+/* ============================================================
+   [4] 화면 그리기
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const stream = $("stream"), tape = $("tape");
+$("modelName").textContent = CONFIG.OPENAI_MODEL;
+
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+// 아주 작은 마크다운 렌더러 (제목·굵게·목록·표)
+function md(src){
+  const lines = esc(src).split("\n");
+  let out = "", list = false, table = false;
+  const inline = s => s.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/`(.+?)`/g,"<code>$1</code>");
+  for (let ln of lines){
+    const t = ln.trim();
+    if (/^\|(.+)\|$/.test(t)){
+      if (/^\|[\s:|-]+\|$/.test(t)) continue;
+      const cells = t.slice(1,-1).split("|").map(c=>inline(c.trim()));
+      if (!table){ out += "<table>"; table = true;
+        out += "<tr>" + cells.map(c=>`<th>${c}</th>`).join("") + "</tr>";
+      } else out += "<tr>" + cells.map(c=>`<td>${c}</td>`).join("") + "</tr>";
+      continue;
+    }
+    if (table){ out += "</table>"; table = false; }
+    const h = t.match(/^(#{1,3})\s+(.*)$/);
+    if (h){ if(list){out+="</ul>";list=false;} out += `<h3>${inline(h[2])}</h3>`; continue; }
+    if (/^[-*]\s+/.test(t)){ if(!list){out+="<ul>";list=true;} out += `<li>${inline(t.replace(/^[-*]\s+/,""))}</li>`; continue; }
+    if (list){ out += "</ul>"; list = false; }
+    out += t ? `<p style="margin:.4em 0">${inline(t)}</p>` : "";
+  }
+  if (list) out += "</ul>";
+  if (table) out += "</table>";
+  return out;
+}
+
+function bubble(who, text, isUser){
+  const el = document.createElement("div");
+  el.className = "msg" + (isUser ? " user" : "");
+  el.innerHTML = `<div class="who">${esc(who)}</div><div class="body">${isUser ? esc(text) : md(text)}</div>`;
+  stream.appendChild(el); scroll();
+  return el;
+}
+
+function scroll(){ stream.scrollTop = stream.scrollHeight; }
+
+function renderPlan(){
+  $("plan").innerHTML = PLAN_STEPS.map((s,i)=>{
+    const cls = i < state.단계 ? "done" : (i === state.단계 ? "on" : "");
+    return `<li class="${cls}"><span class="n">${"①②③④⑤⑥"[i]}</span><span class="t">${esc(s)}</span></li>`;
+  }).join("");
+}
+
+function renderState(){
+  const facts = Object.entries(state.파악한정보);
+  const rows = [
+    ["파악한 정보", facts.length ? facts.length + "건" : "—", facts.length],
+    ["검색 결과", state.검색결과.length ? state.검색결과.length + "건" : "—", state.검색결과.length],
+    ["만든 문서", state.만든문서.length ? state.만든문서.length + "장" : "—", state.만든문서.length],
+    ["TAO 기록", state.TAO.length ? state.TAO.length + "회" : "—", state.TAO.length]
+  ];
+  let html = rows.map(([k,v,has]) =>
+    `<div><span class="k">${k}</span><span class="v ${has?"has":""}">${v}</span></div>`).join("");
+  if (facts.length) html += facts.map(([k,v]) =>
+    `<div><span class="k">· ${esc(k)}</span><span class="v has">${esc(String(v)).slice(0,22)}</span></div>`).join("");
+  $("state").innerHTML = html;
+}
+
+function logTAO(t, a, args, o, kind){
+  state.TAO.push({t,a,args,o,kind});
+  if (state.TAO.length === 1) tape.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "cycle" + (kind ? " " + kind : "");
+  el.innerHTML =
+    `<div class="num">${state.TAO.length}</div>
+     <div class="tline t"><span class="tag">T</span><span class="txt">${esc(t || "—")}</span></div>
+     <div class="tline a"><span class="tag">A</span><span class="txt">${esc(a)}(${esc(args)})</span></div>
+     <div class="tline o"><span class="tag">O</span><span class="txt">${esc(o)}</span></div>`;
+  tape.appendChild(el);
+  tape.scrollIntoView({block:"end"});
+  renderState();
+}
+
+/* ============================================================
+   [5] 사용자 입력 / 승인 기다리기
+   ============================================================ */
+function waitForUser(){ return new Promise(res => { pending = res; }); }
+
+function askCard(question){
+  const el = document.createElement("div");
+  el.className = "card ask";
+  el.innerHTML = `<div class="cap">ASKUSER · 확인 질문</div><div class="cbody">${esc(question)}</div>`;
+  stream.appendChild(el); scroll();
+  $("input").focus();
+  return waitForUser();
+}
+
+function approvalCard(tool, args, why){
+  const el = document.createElement("div");
+  el.className = "card approve";
+  el.innerHTML =
+    `<div class="cap">승인 필요 · ${esc(tool)}</div>
+     <div class="cbody">${esc(why || "이 도구를 실행할까요?")}
+       <div class="args">${esc(JSON.stringify(args, null, 2))}</div></div>
+     <div class="acts"><button class="btn go">승인하고 실행</button><button class="btn no">취소</button></div>`;
+  stream.appendChild(el); scroll();
+  return new Promise(res => {
+    const [ok, no] = el.querySelectorAll("button");
+    const done = v => { ok.disabled = no.disabled = true;
+      el.querySelector(".cap").textContent = `${v ? "승인됨" : "취소됨"} · ${tool}`; res(v); };
+    ok.onclick = () => done(true);
+    no.onclick = () => done(false);
+  });
+}
+
+function confirmSheetCard(){
+  const el = document.createElement("div");
+  el.className = "card ask";
+  el.innerHTML =
+    `<div class="cap">정보지 확인</div>
+     <div class="cbody">정보지를 확인하셨나요? 확인하면 상담을 마무리합니다.</div>
+     <div class="acts"><button class="btn go">확인했어요 · 마무리</button><button class="btn no">더 고칠래요</button></div>`;
+  stream.appendChild(el); scroll();
+  const [ok, no] = el.querySelectorAll("button");
+  ok.onclick = () => { ok.disabled = no.disabled = true; finish("정보지를 확인해서 마무리했습니다."); };
+  no.onclick = () => { ok.disabled = no.disabled = true; bubble("도우미","어느 부분을 고칠까요? 바꾸고 싶은 내용을 적어 주세요."); };
+}
+
+/* ============================================================
+   [6] 도구 — 명세서 [도구]
+   ============================================================ */
+const TOOLS = [
+  { type:"function", function:{ name:"askUser", description:"학생에게 부족한 정보를 되묻는 명확화 질문. 한 번에 하나만.",
+    parameters:{type:"object",properties:{question:{type:"string"}},required:["question"]}}},
+  { type:"function", function:{ name:"searchCareerNet", description:"커리어넷에서 학과·직업 정보를 검색한다.",
+    parameters:{type:"object",properties:{
+      keyword:{type:"string",description:"학과명 또는 직업명"},
+      kind:{type:"string",enum:["학과","직업"]}},required:["keyword","kind"]}}},
+  { type:"function", function:{ name:"searchUnivMajor", description:"학교·학과 매핑, 지역, 학위과정, 폐과 여부를 조사한다.",
+    parameters:{type:"object",properties:{
+      major:{type:"string"},region:{type:"string",description:"지역(선택)"}},required:["major"]}}},
+  { type:"function", function:{ name:"searchPublicEduDomain", description:"공공 교육 도메인·백과 수준의 배경 지식을 조사한다.",
+    parameters:{type:"object",properties:{query:{type:"string"}},required:["query"]}}},
+  { type:"function", function:{ name:"compareOptions", description:"여러 선택지를 항목별 비교표로 정리한다.",
+    parameters:{type:"object",properties:{
+      options:{type:"array",items:{type:"string"}},
+      criteria:{type:"array",items:{type:"string"}}},required:["options"]}}},
+  { type:"function", function:{ name:"assessFit", description:"학생과 학과의 적합도를 진단한다. 단정 표현은 쓰지 않는다.",
+    parameters:{type:"object",properties:{
+      major:{type:"string"},studentInfo:{type:"string"}},required:["major"]}}},
+  { type:"function", function:{ name:"generateInfoSheet", description:"수집한 정보를 정보지 한 장으로 작성한다.",
+    parameters:{type:"object",properties:{title:{type:"string"}},required:["title"]}}},
+  { type:"function", function:{ name:"exportToPDF", description:"정보지를 PDF로 내려받는다. 승인 필요.",
+    parameters:{type:"object",properties:{title:{type:"string"}}}}},
+  { type:"function", function:{ name:"sendEmailToParent", description:"학부모에게 정보지를 메일로 보낸다. 승인 필요.",
+    parameters:{type:"object",properties:{
+      to:{type:"string"},subject:{type:"string"},body:{type:"string"}},required:["to"]}}},
+  // 상태·계획 관리용
+  { type:"function", function:{ name:"rememberFact", description:"학생에 대해 새로 알게 된 사실을 상태에 저장한다.",
+    parameters:{type:"object",properties:{key:{type:"string"},value:{type:"string"}},required:["key","value"]}}},
+  { type:"function", function:{ name:"setPlanStep", description:"현재 진행 중인 계획 단계를 바꾼다(1~6).",
+    parameters:{type:"object",properties:{step:{type:"integer"}},required:["step"]}}}
+];
+
+const APPROVAL_TOOLS = ["exportToPDF", "sendEmailToParent"];
+
+/* ── 커리어넷 검색 (실제 API) ── */
+async function careerNet(keyword, kind){
+  if (SERVER_MODE){
+    const r = await fetch(`/api/careernet?keyword=${encodeURIComponent(keyword)}&kind=${encodeURIComponent(kind)}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    const list = data?.dataSearch?.content ?? [];
+    if (!list.length) throw new Error("검색 결과 없음");
+    return list.slice(0, 5);
+  }
+
+  const base = "https://www.career.go.kr/cnet/openapi/getOpenApi";
+  const q = new URLSearchParams({ apiKey: CONFIG.CAREERNET_API_KEY, svcType:"api", contentType:"json" });
+  if (kind === "직업"){ q.set("svcCode","JOB"); q.set("gubun","job_dic_list"); q.set("searchJobNm", keyword); }
+  else { q.set("svcCode","MAJOR"); q.set("gubun","univ_list"); q.set("searchTitle", keyword); }
+
+  const r = await fetch(`${base}?${q}`);
+  if (!r.ok) throw new Error("커리어넷 응답 " + r.status);
+  const data = await r.json();
+  const list = data?.dataSearch?.content ?? [];
+  if (!list.length) throw new Error("검색 결과 없음");
+  return list.slice(0, 5);
+}
+
+/* ── LLM 지식으로 답하는 조사 도구 ── */
+async function askModel(instruction){
+  const res = await llm([
+    { role:"system", content:"너는 진로 정보 조사 보조다. 확실하지 않은 것은 '확인 필요'라고 표시하고, 짧은 항목으로 정리해 답한다." },
+    { role:"user", content: instruction }
+  ]);
+  return res.content || "결과 없음";
+}
+
+/* ── 도구 실행기 ── */
+async function runTool(name, args){
+  switch(name){
+    case "askUser":
+      return { answer: await askCard(args.question) };
+
+    case "searchCareerNet": {
+      try{
+        const hits = await careerNet(args.keyword, args.kind);
+        state.검색결과.push({ 도구:name, 질의:args.keyword, 요약:`${hits.length}건` });
+        return { source:"커리어넷", results: hits };
+      }catch(e){
+        // 브라우저에서 직접 호출하면 CORS로 막힐 수 있다. 그때는 모델 지식으로 대체.
+        const alt = await askModel(`커리어넷 ${args.kind} 정보 수준으로 "${args.keyword}"를 정리해줘. 하는 일, 필요한 적성, 관련 학과, 진출 분야.`);
+        state.검색결과.push({ 도구:name, 질의:args.keyword, 요약:"대체 조사" });
+        return { source:"모델 지식(커리어넷 호출 실패: " + e.message + ")", results: alt };
+      }
+    }
+
+    case "searchUnivMajor": {
+      const out = await askModel(`"${args.major}" 학과를 개설한 국내 대학을 ${args.region ? args.region + " 지역 위주로 " : ""}알려줘. 학교명·학위과정(2·3·4년제)·비슷한 이름의 학과·최근 통폐합이나 폐과 사례. 확실하지 않으면 '확인 필요' 표시.`);
+      state.검색결과.push({ 도구:name, 질의:args.major, 요약:"대학 매핑" });
+      return { source:"모델 지식", results: out };
+    }
+
+    case "searchPublicEduDomain": {
+      const out = await askModel(`"${args.query}"에 대해 교육·공공기관 자료 수준으로 배경을 정리해줘.`);
+      state.검색결과.push({ 도구:name, 질의:args.query, 요약:"배경 조사" });
+      return { source:"모델 지식", results: out };
+    }
+
+    case "compareOptions": {
+      const out = await askModel(`다음 선택지를 마크다운 표로 비교해줘: ${args.options.join(", ")}. 기준: ${(args.criteria||["배우는 내용","필요한 적성","진출 분야","고려할 점"]).join(", ")}. 어느 쪽이 낫다고 단정하지 말 것.`);
+      return { table: out };
+    }
+
+    case "assessFit": {
+      const info = args.studentInfo || JSON.stringify(state.파악한정보);
+      const out = await askModel(`학생 정보: ${info}\n학과: ${args.major}\n잘 맞을 수 있는 점과 미리 확인해 볼 점을 각각 정리해줘. '가라/맞다/안 맞는다' 같은 단정 표현은 쓰지 말고, 학생이 직접 판단할 수 있게 질문을 덧붙여줘.`);
+      return { assessment: out };
+    }
+
+    case "generateInfoSheet": {
+      const sheet = await askModel(
+        `아래 내용을 A4 한 장 분량 진로 정보지로 만들어줘. 마크다운 제목·표·목록 사용.
+제목: ${args.title}
+파악한 정보: ${JSON.stringify(state.파악한정보)}
+조사 기록: ${JSON.stringify(state.검색결과)}
+지금까지 대화: ${messages.filter(m=>m.role!=="system").slice(-12).map(m=>m.content).join("\n").slice(0,3000)}
+구성: ① 한눈에 보기 ② 학과 비교표 ③ 관련 직업 ④ 확인해 볼 점 ⑤ 다음에 해볼 것`);
+      state.만든문서.push({ 제목: args.title, 내용: sheet });
+      bubble("정보지 · " + args.title, sheet);
+      confirmSheetCard();
+      renderState();
+      return { ok:true, note:"정보지를 화면에 띄웠다. 사용자가 확인 버튼을 누르면 종료된다." };
+    }
+
+    case "exportToPDF": {
+      const doc = state.만든문서.at(-1);
+      if (!doc) return { error:"아직 만든 정보지가 없다. generateInfoSheet를 먼저 부를 것." };
+      const w = window.open("", "_blank");
+      w.document.write(`<!doctype html><meta charset="utf-8"><title>${doc.제목}</title>
+        <style>body{font-family:Pretendard,sans-serif;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7;color:#111}
+        table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:7px 10px;text-align:left}
+        th{background:#f4f4f4}h3{margin-top:1.4em}</style>
+        <h1>${doc.제목}</h1>${md(doc.내용)}`);
+      w.document.close();
+      setTimeout(()=>w.print(), 400);
+      return { ok:true, note:"인쇄 창을 열었다. '대상'을 PDF로 저장으로 선택하면 저장된다." };
+    }
+
+    case "sendEmailToParent": {
+      const doc = state.만든문서.at(-1);
+      const body = args.body || (doc ? doc.내용 : "");
+      const href = `mailto:${encodeURIComponent(args.to)}?subject=${encodeURIComponent(args.subject || "진로 정보지")}&body=${encodeURIComponent(body.slice(0,1800))}`;
+      window.open(href, "_blank");
+      return { ok:true, note:"메일 앱에 초안을 채워 열었다. 실제 발송은 사용자가 보내기를 눌러야 한다." };
+    }
+
+    case "rememberFact":
+      state.파악한정보[args.key] = args.value; renderState();
+      return { ok:true };
+
+    case "setPlanStep":
+      state.단계 = Math.max(0, Math.min(5, (args.step|0) - 1)); renderPlan();
+      return { ok:true, step: PLAN_STEPS[state.단계] };
+
+    default:
+      return { error:"알 수 없는 도구: " + name };
+  }
+}
+
+/* ============================================================
+   [7] LLM 호출 (GPT-5.1)
+   ============================================================ */
+const NET_HELP =
+`요청이 OpenAI 서버까지 가지 못했습니다. 키 문제가 아닙니다(키가 틀리면 401이 뜹니다).
+
+확인할 것
+1. 파일을 더블클릭해서 열지 않았는지 — 주소가 file:// 이면 브라우저가 외부 호출을 막습니다.
+   폴더에서 python3 server.py 를 실행하고 http://localhost:8000 으로 여세요.
+2. 학교망·사내망 방화벽이나 VPN이 api.openai.com 을 막고 있는지.
+3. 광고 차단 확장 프로그램을 끄고 새로고침.`;
+
+async function llm(msgs, tools){
+  const body = { model: CONFIG.OPENAI_MODEL, messages: msgs, max_completion_tokens: 2000 };
+  if (tools) { body.tools = tools; body.tool_choice = "auto"; }
+
+  let url = "/api/openai", headers = { "Content-Type":"application/json" };
+  if (!SERVER_MODE){
+    const key = $("apikey").value.trim() || CONFIG.OPENAI_API_KEY;
+    if (!key) throw new Error("OpenAI 키가 없습니다. 오른쪽 위에 키를 넣거나 server.py 로 실행하세요.");
+    url = CONFIG.OPENAI_URL;
+    headers["Authorization"] = "Bearer " + key;
+  }
+
+  let r;
+  try {
+    r = await fetch(url, { method:"POST", headers, body: JSON.stringify(body) });
+  } catch(e){
+    throw new Error("연결 실패 (" + e.message + ")\n\n" + NET_HELP);
+  }
+
+  if (!r.ok) throw new Error("OpenAI " + r.status + " · " + (await r.text()).slice(0,300));
+
+  const data = await r.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  if (!data.choices || !data.choices.length) throw new Error("응답에 choices가 없습니다: " + JSON.stringify(data).slice(0,300));
+  return data.choices[0].message;
+}
+
+/* 연결 테스트: 네트워크와 키를 따로 확인한다 */
+$("ping").onclick = async () => {
+  await detectMode();
+  try{
+    const m = await llm([{ role:"user", content:"연결 확인. '연결됨' 이라고만 답해." }]);
+    bubble("연결 테스트", "정상입니다. 모델 응답: " + (m.content || "(빈 응답)"));
+  }catch(e){
+    bubble("연결 테스트 실패", e.message);
+  }
+};
+
+/* ============================================================
+   [8] 에이전트 루프
+   ============================================================ */
+async function agentTurn(){
+  for (let i = 0; i < 12; i++){
+    if (state.종료됨) return;
+
+    let reply;
+    try { reply = await llm(messages, TOOLS); }
+    catch(e){ bubble("오류", e.message); return; }
+
+    messages.push(reply);
+    const thought = (reply.content || "").trim();
+    if (thought) bubble("도우미", thought);
+
+    const calls = reply.tool_calls;
+    if (!calls || !calls.length) return;      // 도구 없이 답만 하면 턴 종료
+
+    for (const c of calls){
+      const name = c.function.name;
+      let args = {};
+      try { args = JSON.parse(c.function.arguments || "{}"); } catch(e){}
+
+      // 승인 도구는 실행 전에 멈춘다
+      if (APPROVAL_TOOLS.includes(name)){
+        const ok = await approvalCard(name, args, thought);
+        if (!ok){
+          logTAO(thought, name, Object.values(args).join(", ").slice(0,40), "사용자가 취소함", "approve");
+          messages.push({ role:"tool", tool_call_id:c.id, content:JSON.stringify({ cancelled:true }) });
+          continue;
+        }
+      }
+
+      let result, kind = APPROVAL_TOOLS.includes(name) ? "approve" : "";
+      try {
+        result = await runTool(name, args);
+        if (result && result.error) { failStreak++; kind = "err"; } else failStreak = 0;
+      } catch(e){
+        result = { error: e.message }; failStreak++; kind = "err";
+      }
+
+      const argStr = Object.values(args).join(", ").slice(0, 44);
+      const obs = result.error ? "실패 · " + result.error
+                : JSON.stringify(result).replace(/\s+/g," ").slice(0, 110) + "…";
+      logTAO(thought, name, argStr, obs, kind);
+
+      messages.push({ role:"tool", tool_call_id:c.id, content: JSON.stringify(result).slice(0, 6000) });
+
+      if (failStreak >= 3){
+        finish("도구가 세 번 연속 실패해서 멈췄습니다. 키와 네트워크를 확인한 뒤 새로고침해 주세요.");
+        return;
+      }
+      if (state.종료됨) return;
+    }
+  }
+  bubble("도우미", "생각이 길어져서 한 번 멈췄어요. 이어서 진행할까요?");
+}
+
+function finish(msg){
+  state.종료됨 = true;
+  bubble("종료", msg);
+  $("input").disabled = $("send").disabled = true;
+  $("input").placeholder = "상담이 끝났습니다. 새로고침하면 다시 시작합니다.";
+}
+
+/* ============================================================
+   [9] 입력 처리
+   ============================================================ */
+async function submit(){
+  const box = $("input"), text = box.value.trim();
+  if (!text || state.종료됨) return;
+  box.value = "";
+  bubble("나", text, true);
+
+  if (/^그만|^종료|^stop$/i.test(text)) { finish("'그만' 요청으로 상담을 마칩니다."); return; }
+
+  // askUser 도구가 답을 기다리는 중이면 그 도구에게 넘긴다
+  if (pending){ const p = pending; pending = null; p(text); return; }
+
+  messages.push({ role:"user", content:text });
+  $("send").disabled = true;
+  await agentTurn();
+  $("send").disabled = false;
+}
+
+$("send").onclick = submit;
+$("input").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); submit(); }
+});
+
+/* ── 시작 ── */
+renderPlan(); renderState();
+bubble("도우미",
+`안녕하세요. 저는 진로·학과 정보를 **정리하고 비교해 주는 큐레이터**예요.
+어디로 가라고 정해 주지는 않고, 판단에 필요한 정보를 한 장으로 만들어 드립니다.
+
+궁금한 학과나 직업을 적어 주세요. 잘 도는지 먼저 보려면 위의 **연결 테스트**를 눌러 보세요.`);
+detectMode();
+</script>
+</body>
+</html>
