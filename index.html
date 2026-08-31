@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>미디어 진로 도우미</title>
+<title>진로 탐색 도우미 에이전트</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <style>
 :root{
@@ -175,16 +175,12 @@ textarea{
 
 <header>
   <div class="brand">
-    <h1>미디어 진로 도우미</h1>
+    <h1>진로 탐색 도우미 에이전트</h1>
     <span class="role">진로·학과 정보 큐레이터</span>
   </div>
   <span class="model">모델 <b id="modelName">gpt-5.1</b></span>
   <span class="model" id="mode">확인 중…</span>
   <button class="btn" id="ping">연결 테스트</button>
-  <div class="keybox" id="keybox" style="display:none">
-    <label for="apikey">OpenAI 키</label>
-    <input id="apikey" type="password" placeholder="sk-..." autocomplete="off">
-  </div>
 </header>
 
 <main>
@@ -222,14 +218,20 @@ textarea{
    [1] 설정 — .env에서 가져온 값
    ============================================================ */
 const CONFIG = {
-  OPENAI_API_KEY: "",                 // 직접 모드일 때만 화면 상단에서 입력
+  /* ─────────────────────────────────────────────────────────────
+     ▼▼▼ 키를 바꾸려면 이 줄만 고치면 됩니다 ▼▼▼
+     서버 모드(server.py 또는 Vercel 함수)로 돌 때는 이 값을 쓰지 않고
+     서버가 .env / 환경 변수의 키를 씁니다. 서버가 없을 때만 이 키가 쓰입니다.
+     ───────────────────────────────────────────────────────────── */
+  OPENAI_API_KEY: "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",
+
   OPENAI_MODEL:   "gpt-5.1",
   OPENAI_URL:     "https://api.openai.com/v1/chat/completions",
-  CAREERNET_API_KEY: ""               // 비워 둠. 키는 서버(.env / Vercel 환경 변수)에만 둔다.
+  CAREERNET_API_KEY: "a8e7a0a6770d06811f206c7e36b1b752"
 };
 
-// 서버 모드: server.py 가 켜져 있으면 키는 .env 에서 읽고, 호출도 서버가 대신 한다.
-// 직접 모드: 파일만 열었을 때. 브라우저가 직접 호출하므로 CORS에 막힐 수 있다.
+// 서버 모드: server.py 또는 Vercel 함수가 응답하면 키는 서버에만 있고 호출도 서버가 한다.
+// 내장 키 모드: 서버가 없을 때. 위 CONFIG.OPENAI_API_KEY 를 브라우저가 직접 쓴다.
 let SERVER_MODE = false;
 
 async function detectMode(){
@@ -246,15 +248,16 @@ async function detectMode(){
 }
 
 function setModeBadge(h){
-  const badge = $("mode"), keybox = $("keybox");
+  const badge = $("mode");
   if (SERVER_MODE){
-    badge.textContent = h.hasOpenAIKey ? "서버 모드 · .env 키 사용" : "서버 모드 · .env에 키 없음";
+    badge.textContent = h.hasOpenAIKey ? "서버 모드 · 서버 키 사용" : "서버 모드 · 서버에 키 없음";
     badge.style.color = h.hasOpenAIKey ? "var(--free)" : "var(--approve)";
-    keybox.style.display = "none";
-  } else {
-    badge.textContent = "직접 모드 · CORS에 막힐 수 있음";
+  } else if (CONFIG.OPENAI_API_KEY.startsWith("sk-")){
+    badge.textContent = "내장 키 모드";
     badge.style.color = "var(--approve)";
-    keybox.style.display = "flex";
+  } else {
+    badge.textContent = "키 없음 · 코드의 OPENAI_API_KEY 확인";
+    badge.style.color = "var(--danger)";
   }
 }
 
@@ -719,6 +722,9 @@ async function runTool(name, args){
 /* ============================================================
    [7] LLM 호출 (GPT-5.1)
    ============================================================ */
+/* 화면에 키가 찍히지 않게 가린다 */
+function scrub(t){ return String(t).replace(/sk-[A-Za-z0-9_\-]{6,}/g, "sk-***가려짐***"); }
+
 const NET_HELP =
 `요청이 OpenAI 서버까지 가지 못했습니다. 키 문제가 아닙니다(키가 틀리면 401이 뜹니다).
 
@@ -734,8 +740,9 @@ async function llm(msgs, tools){
 
   let url = "/api/openai", headers = { "Content-Type":"application/json" };
   if (!SERVER_MODE){
-    const key = $("apikey").value.trim() || CONFIG.OPENAI_API_KEY;
-    if (!key) throw new Error("OpenAI 키가 없습니다. 오른쪽 위에 키를 넣거나 server.py 로 실행하세요.");
+    const key = CONFIG.OPENAI_API_KEY.trim();
+    if (!key.startsWith("sk-"))
+      throw new Error("코드 안의 CONFIG.OPENAI_API_KEY 가 비어 있거나 잘못됐습니다. index.html 위쪽의 표시된 줄을 확인하세요.");
     url = CONFIG.OPENAI_URL;
     headers["Authorization"] = "Bearer " + key;
   }
@@ -744,13 +751,13 @@ async function llm(msgs, tools){
   try {
     r = await fetch(url, { method:"POST", headers, body: JSON.stringify(body) });
   } catch(e){
-    throw new Error("연결 실패 (" + e.message + ")\n\n" + NET_HELP);
+    throw new Error(scrub("연결 실패 (" + e.message + ")") + "\n\n" + NET_HELP);
   }
 
-  if (!r.ok) throw new Error("OpenAI " + r.status + " · " + (await r.text()).slice(0,300));
+  if (!r.ok) throw new Error(scrub("OpenAI " + r.status + " · " + (await r.text()).slice(0,300)));
 
   const data = await r.json();
-  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  if (data.error) throw new Error(scrub(data.error.message || JSON.stringify(data.error)));
   if (!data.choices || !data.choices.length) throw new Error("응답에 choices가 없습니다: " + JSON.stringify(data).slice(0,300));
   return data.choices[0].message;
 }
@@ -762,7 +769,7 @@ $("ping").onclick = async () => {
     const m = await llm([{ role:"user", content:"연결 확인. '연결됨' 이라고만 답해." }]);
     bubble("연결 테스트", "정상입니다. 모델 응답: " + (m.content || "(빈 응답)"));
   }catch(e){
-    bubble("연결 테스트 실패", e.message);
+    bubble("연결 테스트 실패", scrub(e.message));
   }
 };
 
@@ -778,7 +785,7 @@ async function agentTurn(){
 
       let reply;
       try { reply = await llm(messages, TOOLS); }
-      catch(e){ bubble("오류", e.message); return; }
+      catch(e){ bubble("오류", scrub(e.message)); return; }
 
       messages.push(reply);
       const thought = (reply.content || "").trim();
