@@ -1,5 +1,5 @@
 """
-미디어 진로 도우미 — 로컬 실행 서버
+진로 탐색 도우미 에이전트 — 로컬 실행 서버
 
 하는 일 세 가지
   1) career-agent.html 을 http://localhost:8000 으로 띄운다  (file:// 문제 해결)
@@ -44,6 +44,12 @@ ENV = load_env()
 OPENAI_KEY = ENV.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = ENV.get("OPENAI_MODEL", "gpt-5.1")
 CAREERNET_KEY = ENV.get("CAREERNET_API_KEY", "")
+
+
+def scrub(text):
+    """에러 메시지에 키가 섞여 나오지 않게 가린다."""
+    import re as _re
+    return _re.sub(r"sk-[A-Za-z0-9_\\-]{6,}", "sk-***가려짐***", str(text))
 
 
 def post_json(url, payload, headers, timeout=120):
@@ -145,15 +151,15 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(body)
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:500]
-            self.send_json(200, {"error": {"message": "OpenAI %s · %s" % (e.code, detail)}})
+            self.send_json(200, {"error": {"message": scrub("OpenAI %s · %s" % (e.code, detail))}})
         except Exception as e:
             self.send_json(200, {"error": {"message":
-                "OpenAI 서버에 연결하지 못했습니다: %s (방화벽·VPN·프록시 확인)" % e}})
+                scrub("OpenAI 서버에 연결하지 못했습니다: %s (방화벽·VPN·프록시 확인)" % e)}})
 
 
 if __name__ == "__main__":
     print("=" * 52)
-    print("  미디어 진로 도우미")
+    print("  진로 탐색 도우미 에이전트")
     print("  주소   http://localhost:%d" % PORT)
     print("  모델   %s" % OPENAI_MODEL)
     print("  키     OpenAI %s / 커리어넷 %s"
