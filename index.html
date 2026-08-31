@@ -224,6 +224,7 @@ const CONFIG = {
      서버가 .env / 환경 변수의 키를 씁니다. 서버가 없을 때만 이 키가 쓰입니다.
      ───────────────────────────────────────────────────────────── */
   OPENAI_API_KEY: "",
+
   OPENAI_MODEL:   "gpt-5.1",
   OPENAI_URL:     "https://api.openai.com/v1/chat/completions",
   CAREERNET_API_KEY: ""
@@ -687,14 +688,19 @@ async function runTool(name, args){
       const doc = state.만든문서.at(-1);
       if (!doc) return { error:"아직 만든 정보지가 없다. generateInfoSheet를 먼저 부를 것." };
       const w = window.open("", "_blank");
-      w.document.write(`<!doctype html><meta charset="utf-8"><title>${doc.제목}</title>
-        <style>body{font-family:Pretendard,sans-serif;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7;color:#111}
-        table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:7px 10px;text-align:left}
-        th{background:#f4f4f4}h3{margin-top:1.4em}</style>
-        <h1>${doc.제목}</h1>${md(doc.내용)}`);
-      w.document.close();
-      setTimeout(()=>w.print(), 400);
-      return { ok:true, note:"인쇄 창을 열었다. '대상'을 PDF로 저장으로 선택하면 저장된다." };
+      if (!w) return { error:"브라우저가 새 창을 막았다. 주소창 오른쪽의 팝업 차단 아이콘을 눌러 허용한 뒤 다시 시도하라고 사용자에게 안내할 것." };
+      try{
+        w.document.write(`<!doctype html><meta charset="utf-8"><title>${doc.제목}</title>
+          <style>body{font-family:Pretendard,sans-serif;max-width:760px;margin:40px auto;padding:0 24px;line-height:1.7;color:#111}
+          table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:7px 10px;text-align:left}
+          th{background:#f4f4f4}h3{margin-top:1.4em}</style>
+          <h1>${doc.제목}</h1>${md(doc.내용)}`);
+        w.document.close();
+        setTimeout(()=>w.print(), 400);
+      }catch(e){
+        return { error:"인쇄 창을 여는 중 오류: " + e.message };
+      }
+      return { ok:true, note:"인쇄 창을 열었다. 대상을 'PDF로 저장'으로 고르면 저장된다." };
     }
 
     case "sendEmailToParent": {
@@ -723,6 +729,33 @@ async function runTool(name, args){
    ============================================================ */
 /* 화면에 키가 찍히지 않게 가린다 */
 function scrub(t){ return String(t).replace(/sk-[A-Za-z0-9_\-]{6,}/g, "sk-***가려짐***"); }
+
+/* tool_calls 하나하나에는 반드시 tool 응답이 붙어야 한다.
+   중간에 멈추거나 종료해서 빠진 응답이 있으면 여기서 채운다. */
+function repairToolCalls(msgs){
+  const out = [];
+  for (let i = 0; i < msgs.length; i++){
+    const m = msgs[i];
+    out.push(m);
+    if (m.role !== "assistant" || !m.tool_calls || !m.tool_calls.length) continue;
+
+    const answered = new Set();
+    let j = i + 1;
+    while (j < msgs.length && msgs[j].role === "tool"){
+      answered.add(msgs[j].tool_call_id);
+      out.push(msgs[j]);
+      j++;
+    }
+    for (const c of m.tool_calls){
+      if (!answered.has(c.id)){
+        out.push({ role:"tool", tool_call_id:c.id,
+          content: JSON.stringify({ skipped:true, reason:"진행이 중단되어 실행하지 않음" }) });
+      }
+    }
+    i = j - 1;
+  }
+  return out;
+}
 
 const NET_HELP =
 `요청이 OpenAI 서버까지 가지 못했습니다. 키 문제가 아닙니다(키가 틀리면 401이 뜹니다).
@@ -783,6 +816,7 @@ async function agentTurn(){
       if (state.중단요청){ pauseForReplan(); return; }
 
       let reply;
+      messages = repairToolCalls(messages);
       try { reply = await llm(messages, TOOLS); }
       catch(e){ bubble("오류", scrub(e.message)); return; }
 
@@ -792,6 +826,9 @@ async function agentTurn(){
 
       const calls = reply.tool_calls;
       if (!calls || !calls.length) return;      // 도구 없이 답만 하면 턴 종료
+
+      const answered = new Set();
+      let halt = null;                          // "종료" | "중단"
 
       for (const c of calls){
         const name = c.function.name;
@@ -803,6 +840,7 @@ async function agentTurn(){
           if (!ok){
             logTAO(thought, name, Object.values(args).join(", ").slice(0,40), "사용자가 취소함", "approve");
             messages.push({ role:"tool", tool_call_id:c.id, content:JSON.stringify({ cancelled:true }) });
+            answered.add(c.id);
             continue;
           }
         }
@@ -826,15 +864,28 @@ async function agentTurn(){
                   : JSON.stringify(result).replace(/\s+/g," ").slice(0, 110) + "…";
         logTAO(thought, name, argStr, obs, kind);
 
+        // 어떤 경로로든 이 줄을 지나야 한다. 응답 없는 tool_call 을 남기면 다음 요청이 400 난다.
         messages.push({ role:"tool", tool_call_id:c.id, content: JSON.stringify(result).slice(0, 6000) });
+        answered.add(c.id);
 
         if (failStreak >= 3){
           finish("도구가 세 번 연속 실패해서 멈췄습니다. 키와 네트워크를 확인한 뒤 새로고침해 주세요.");
-          return;
+          halt = "종료"; break;
         }
-        if (state.종료됨) return;
-        if (state.중단요청){ pauseForReplan(); return; }
+        if (state.종료됨){ halt = "종료"; break; }
+        if (state.중단요청){ halt = "중단"; break; }
       }
+
+      // 실행하지 못하고 빠져나온 도구가 있으면 빈 응답으로 짝을 맞춘다
+      for (const c of calls){
+        if (!answered.has(c.id)){
+          messages.push({ role:"tool", tool_call_id:c.id,
+            content: JSON.stringify({ skipped:true, reason:"진행이 중단되어 실행하지 않음" }) });
+        }
+      }
+
+      if (halt === "중단"){ pauseForReplan(); return; }
+      if (halt === "종료") return;
     }
     bubble("도우미", "생각이 길어져서 한 번 멈췄어요. 이어서 진행할까요?");
   } finally {
